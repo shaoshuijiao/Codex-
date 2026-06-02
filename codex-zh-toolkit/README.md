@@ -1,33 +1,63 @@
-# Codex 中文化工具包
+﻿# Codex 中文化工具包
 
-这个工具包参考 `LinYiXin123/claude-code-zh-toolkit` 的显示层补丁思路，把官方 Codex 桌面端复制到用户目录后注入中文化脚本。
+参考 `LinYiXin123/claude-code-zh-toolkit` 的思路：通过前端显示层补丁、中文映射表和技能/插件映射同步，把 Codex 桌面端界面尽量中文化。
 
-默认不会修改 `C:\Program Files\WindowsApps` 里的原版 Codex。
+当前官方 Codex 是 Store/MSIX 应用，前端资源在 `resources\app.asar`，不是参考项目默认的 `resources\ion-dist`，所以本工具包提供两种安装方式。
 
-## 安装
+## 方式一：原版内嵌安装（推荐）
+
+效果：继续打开原来的 Codex 图标，界面直接中文化。
+
+注意：需要管理员权限；Codex 更新后可能需要重新运行。
+
+先完全关闭 Codex，然后运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install_codex_zh_inplace.ps1
+```
+
+脚本会：
+
+- 定位 `Get-AppxPackage OpenAI.Codex` 的安装目录。
+- 生成中文映射：`%USERPROFILE%\.codex\tools\codex-chinese\codex-zh-map.json`。
+- 备份原始 `app.asar` 到 `%LOCALAPPDATA%\OpenAI\Codex-zh-backups`。
+- 注入 `codex-zh-patch.js` 和 `codex-zh-map.json`。
+- 以管理员权限覆盖官方 `resources\app.asar`。
+
+只生成补丁包、不覆盖官方 Codex：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install_codex_zh_inplace.ps1 -PrepareOnly
+```
+
+## 恢复原版
+
+先完全关闭 Codex，然后运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\restore_codex_zh_inplace.ps1
+```
+
+## 方式二：中文化副本（低风险备选）
+
+效果：创建一个可回退副本和 `Codex-ZH.lnk`。如果你希望原图标直接生效，不要用这个方式。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install_codex_zh.ps1
 ```
 
-安装后会创建：
-
-- `%LOCALAPPDATA%\OpenAI\Codex-zh\...` 中文化副本
-- 桌面快捷方式 `Codex 中文版.lnk`
-- `%USERPROFILE%\.codex\tools\codex-chinese` 映射生成工具
-
-## 刷新映射
-
-新增技能或插件后运行：
+刷新副本映射：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\refresh_codex_zh.ps1
 ```
 
-## 卸载
+删除副本：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\uninstall_codex_zh.ps1
 ```
 
-卸载只删除中文化副本，不影响官方 Codex。
+## 说明
+
+中文化只修改显示文字，不修改插件 ID、技能 ID、命令名、账号、网络请求或功能逻辑。
