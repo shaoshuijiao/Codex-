@@ -67,9 +67,28 @@ function Assert-SafeCodexPath {
 function Get-RunningCodexProcesses {
     param([string]$AppRoot)
     $prefix = [System.IO.Path]::GetFullPath($AppRoot).TrimEnd('\') + "\"
-    return @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.Path -and $_.Path.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
-    })
+    $running = @()
+
+    try {
+        $running = @(Get-CimInstance Win32_Process -Filter "Name = 'Codex.exe' OR Name = 'codex.exe'" -ErrorAction Stop |
+            Where-Object {
+                $_.ExecutablePath -and $_.ExecutablePath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+            } |
+            ForEach-Object {
+                [pscustomobject]@{
+                    ProcessName = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+                    Id = $_.ProcessId
+                    MainWindowTitle = ""
+                    Path = $_.ExecutablePath
+                }
+            })
+    } catch {
+        $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.Path -and $_.Path.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+        })
+    }
+
+    return $running
 }
 
 function Grant-AdministratorsWrite {
@@ -81,10 +100,19 @@ function Grant-AdministratorsWrite {
     if ($LASTEXITCODE -ne 0) {
         throw "takeown failed for $Path with exit code $LASTEXITCODE"
     }
-    $grant = if ($Directory) { "*S-1-5-32-544:(OI)(CI)F" } else { "*S-1-5-32-544:F" }
-    icacls.exe $Path /grant $grant | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "icacls grant failed for $Path with exit code $LASTEXITCODE"
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $userSid = $identity.User.Value
+    $grants = if ($Directory) {
+        @("*S-1-5-32-544:(OI)(CI)F", ("*{0}:(OI)(CI)F" -f $userSid))
+    } else {
+        @("*S-1-5-32-544:F", ("*{0}:F" -f $userSid))
+    }
+
+    foreach ($grant in $grants) {
+        icacls.exe $Path /grant $grant | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "icacls grant failed for $Path with exit code $LASTEXITCODE"
+        }
     }
 }
 
@@ -93,6 +121,53 @@ function Grant-CodexAsarWrite {
     $resourcesDir = Split-Path -Parent $AsarPath
     Grant-AdministratorsWrite -Path $resourcesDir -Directory
     Grant-AdministratorsWrite -Path $AsarPath
+}
+
+function Copy-WithRobocopyBackupMode {
+    param(
+        [string]$SourceAsar,
+        [string]$DestinationAsar
+    )
+    $resourcesDir = Split-Path -Parent $DestinationAsar
+    $workRoot = Join-Path $env:TEMP ("codex-zh-robocopy-" + [Guid]::NewGuid().ToString("N"))
+    try {
+        New-Item -ItemType Directory -Force -Path $workRoot | Out-Null
+        Copy-Item -LiteralPath $SourceAsar -Destination (Join-Path $workRoot "app.asar") -Force
+        robocopy.exe $workRoot $resourcesDir "app.asar" /B /COPY:DAT /R:2 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -gt 7) {
+            throw "robocopy failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        if (Test-Path -LiteralPath $workRoot) {
+            $resolved = (Resolve-Path -LiteralPath $workRoot).Path
+            if ($resolved.StartsWith($env:TEMP, [System.StringComparison]::OrdinalIgnoreCase)) {
+                Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
+function Copy-CodexAsar {
+    param(
+        [string]$SourceAsar,
+        [string]$DestinationAsar
+    )
+
+    try {
+        Copy-Item -LiteralPath $SourceAsar -Destination $DestinationAsar -Force
+        return
+    } catch {
+        Write-Output "Initial app.asar copy failed. Granting write permission to Codex resources directory..."
+        Grant-CodexAsarWrite -AsarPath $DestinationAsar
+    }
+
+    try {
+        Copy-Item -LiteralPath $SourceAsar -Destination $DestinationAsar -Force
+        return
+    } catch {
+        Write-Output "Copy-Item still failed. Trying robocopy backup mode..."
+        Copy-WithRobocopyBackupMode -SourceAsar $SourceAsar -DestinationAsar $DestinationAsar
+    }
 }
 
 function Inject-CodexZh {
@@ -224,13 +299,7 @@ if (-not (Test-IsAdmin)) {
     exit 0
 }
 
-try {
-    Copy-Item -LiteralPath $stagedAsar -Destination $asarPath -Force
-} catch {
-    Write-Output "Initial app.asar copy failed. Granting write permission to Codex resources directory..."
-    Grant-CodexAsarWrite -AsarPath $asarPath
-    Copy-Item -LiteralPath $stagedAsar -Destination $asarPath -Force
-}
+Copy-CodexAsar -SourceAsar $stagedAsar -DestinationAsar $asarPath
 
 $installedVerify = npx --yes asar list $asarPath | Select-String -Pattern 'webview\\codex-zh-patch\.js|webview\\codex-zh-map\.json|native-menu-locales\\zh-CN\.json|native-menu-locales\\codex-native-menu-zh\.json'
 if (@($installedVerify).Count -lt 4) {
