@@ -13,10 +13,10 @@ echo 3. If Windows asks for administrator permission, click Yes.
 echo.
 pause
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-NoExit','-File','%SCRIPT%'"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%"
 
 echo.
-echo The administrator installer window has been opened.
+echo If an administrator installer window opens, follow it.
 echo If that window reports success, open the original Codex icon again.
 echo.
 pause

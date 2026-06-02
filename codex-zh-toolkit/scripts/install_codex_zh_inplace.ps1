@@ -203,6 +203,7 @@ if (-not (Test-IsAdmin)) {
     $args = @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
+        "-NoExit",
         "-File", "`"$PSCommandPath`"",
         "-CodexHome", "`"$CodexHome`"",
         "-BackupRoot", "`"$BackupRoot`""
