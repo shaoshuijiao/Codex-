@@ -23,8 +23,31 @@ $toolDir = Join-Path $CodexHome "tools\codex-chinese"
 $mapPath = Join-Path $toolDir "codex-zh-map.json"
 $nativeMenuMapPath = Join-Path $toolDir "codex-native-menu-zh.json"
 
+function Get-RunningLocalizedCopyProcesses {
+    param([string]$PathPrefix)
+    $fullPrefix = [System.IO.Path]::GetFullPath($PathPrefix).TrimEnd('\') + "\"
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.ExecutablePath -and $_.ExecutablePath.StartsWith($fullPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+        } |
+        ForEach-Object {
+            [pscustomobject]@{
+                Name = $_.Name
+                ProcessId = $_.ProcessId
+                ExecutablePath = $_.ExecutablePath
+            }
+        })
+}
+
 if (-not (Test-Path -LiteralPath $backupAsar)) {
     throw "Original app.asar backup was not found: $backupAsar"
+}
+
+$running = Get-RunningLocalizedCopyProcesses -PathPrefix $targetAppRoot.FullName
+if ($running.Count -gt 0) {
+    Write-Output "Codex localized copy is still running. Close it, then run this refresh again."
+    $running | Select-Object Name,ProcessId,ExecutablePath | Format-Table -AutoSize
+    throw "Cannot refresh the localized copy while app.asar is in use."
 }
 
 $python = (Get-Command python.exe -ErrorAction Stop).Source

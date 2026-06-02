@@ -118,6 +118,40 @@ RAW_MENU_LABELS = {
     "Quit": "退出",
 }
 
+RAW_MENU_LABELS.update({
+    "Reload": "重新加载",
+    "Open in External Browser": "在外部浏览器中打开",
+    "Inspect": "检查",
+    "Log Out": "退出登录",
+    "Reload Window": "重新加载窗口",
+    "Toggle Debug Menu": "显示/隐藏调试菜单",
+    "Open Deeplink from Clipboard": "从剪贴板打开深层链接",
+    "Toggle Query Devtools": "显示/隐藏查询开发工具",
+    "Toggle React Scan": "显示/隐藏 React 扫描",
+    "Check for Updates…": "检查更新…",
+    "Model Context Protocol": "模型上下文协议",
+    "Troubleshooting": "故障排查",
+    "Send Feedback": "发送反馈",
+    "Services": "服务",
+    "No Guesses Found": "没有找到建议",
+    "&Learn Spelling": "学习拼写(&L)",
+    "&Search with Google": "用 Google 搜索(&S)",
+    "Cu&t": "剪切(&T)",
+    "&Copy": "复制(&C)",
+    "&Paste": "粘贴(&P)",
+    "Select &All": "全选(&A)",
+    "Save I&mage": "保存图片(&M)",
+    "Sa&ve Image As…": "图片另存为(&V)…",
+    "Save Vide&o": "保存视频(&O)",
+    "Save Video& As…": "视频另存为(&A)…",
+    "Copy Lin&k": "复制链接(&K)",
+    "Save Link As…": "链接另存为…",
+    "Cop&y Image": "复制图片(&Y)",
+    "C&opy Image Address": "复制图片地址(&O)",
+    "Copy Video Ad&dress": "复制视频地址(&D)",
+    "I&nspect Element": "检查元素(&N)",
+})
+
 
 WINDOWS_MENU_BAR = {
     "windowsMenuBar.file": "文件",

@@ -82,6 +82,22 @@ function Get-LocalizedShortcutName {
     return ("Codex " + [string]([char]0x4E2D) + [string]([char]0x6587) + [string]([char]0x7248) + ".lnk")
 }
 
+function Get-RunningLocalizedCopyProcesses {
+    param([string]$PathPrefix)
+    $fullPrefix = [System.IO.Path]::GetFullPath($PathPrefix).TrimEnd('\') + "\"
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.ExecutablePath -and $_.ExecutablePath.StartsWith($fullPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+        } |
+        ForEach-Object {
+            [pscustomobject]@{
+                Name = $_.Name
+                ProcessId = $_.ProcessId
+                ExecutablePath = $_.ExecutablePath
+            }
+        })
+}
+
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $sourceRoot = Resolve-CodexAppRoot
 $sourceVersion = Split-Path -Leaf (Split-Path -Parent $sourceRoot)
@@ -100,6 +116,12 @@ Ensure-Dir $TargetRoot
 Ensure-Dir $toolDir
 
 if ((Test-Path -LiteralPath $targetAppRoot) -and $ForceRefresh) {
+    $running = Get-RunningLocalizedCopyProcesses -PathPrefix $targetAppRoot
+    if ($running.Count -gt 0) {
+        Write-Output "Codex localized copy is still running. Close it, then run this installer again."
+        $running | Select-Object Name,ProcessId,ExecutablePath | Format-Table -AutoSize
+        throw "Cannot refresh the localized copy while app.asar is in use."
+    }
     Remove-TreeRobust -Path $targetAppRoot -AllowedRoot $TargetRoot
 }
 
