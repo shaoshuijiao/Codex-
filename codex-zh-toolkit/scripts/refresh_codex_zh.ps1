@@ -21,6 +21,7 @@ $workRoot = Join-Path $env:TEMP ("codex-zh-refresh-" + [Guid]::NewGuid().ToStrin
 $extractRoot = Join-Path $workRoot "app"
 $toolDir = Join-Path $CodexHome "tools\codex-chinese"
 $mapPath = Join-Path $toolDir "codex-zh-map.json"
+$nativeMenuMapPath = Join-Path $toolDir "codex-native-menu-zh.json"
 
 if (-not (Test-Path -LiteralPath $backupAsar)) {
     throw "Original app.asar backup was not found: $backupAsar"
@@ -28,6 +29,9 @@ if (-not (Test-Path -LiteralPath $backupAsar)) {
 
 $python = (Get-Command python.exe -ErrorAction Stop).Source
 & $python (Join-Path $projectRoot "skills\sync_codex_zh_map.py") --codex-home $CodexHome --out $mapPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Display localization map generator failed with exit code $LASTEXITCODE"
+}
 
 npx --yes asar extract $targetAsar $extractRoot
 $webviewDir = Join-Path $extractRoot "webview"
@@ -49,8 +53,17 @@ if ($html -notmatch 'codex-zh-patch\.js') {
     Set-Content -LiteralPath $indexHtml -Value $html -Encoding UTF8
 }
 
+& $python (Join-Path $projectRoot "skills\sync_codex_native_menu_zh.py") --app-root $extractRoot --out $nativeMenuMapPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Native menu localization generator failed with exit code $LASTEXITCODE"
+}
+
 Remove-Item -LiteralPath $targetAsar -Force
 npx --yes asar pack $extractRoot $targetAsar --unpack "**/*.node"
+$verify = npx --yes asar list $targetAsar | Select-String -Pattern 'webview\\codex-zh-patch\.js|webview\\codex-zh-map\.json|native-menu-locales\\zh-CN\.json|native-menu-locales\\codex-native-menu-zh\.json'
+if (@($verify).Count -lt 4) {
+    throw "Refreshed localized copy app.asar verification failed."
+}
 if (Test-Path -LiteralPath $workRoot) {
     $emptyDir = Join-Path $env:TEMP ("codex-zh-empty-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $emptyDir | Out-Null

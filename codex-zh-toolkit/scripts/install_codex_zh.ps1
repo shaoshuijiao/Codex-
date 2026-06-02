@@ -78,6 +78,10 @@ function Remove-TreeRobust {
     Remove-Item -LiteralPath $fullPath -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+function Get-LocalizedShortcutName {
+    return ("Codex " + [string]([char]0x4E2D) + [string]([char]0x6587) + [string]([char]0x7248) + ".lnk")
+}
+
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $sourceRoot = Resolve-CodexAppRoot
 $sourceVersion = Split-Path -Leaf (Split-Path -Parent $sourceRoot)
@@ -89,6 +93,8 @@ $workRoot = Join-Path $env:TEMP ("codex-zh-asar-" + [Guid]::NewGuid().ToString("
 $extractRoot = Join-Path $workRoot "app"
 $toolDir = Join-Path $CodexHome "tools\codex-chinese"
 $mapPath = Join-Path $toolDir "codex-zh-map.json"
+$nativeMenuScriptPath = Join-Path $toolDir "sync_codex_native_menu_zh.py"
+$nativeMenuMapPath = Join-Path $toolDir "codex-native-menu-zh.json"
 
 Ensure-Dir $TargetRoot
 Ensure-Dir $toolDir
@@ -112,9 +118,13 @@ if (-not (Test-Path -LiteralPath $backupAsar)) {
 
 Copy-Item -LiteralPath (Join-Path $projectRoot "desktop\skill-display-patch.js") -Destination (Join-Path $toolDir "skill-display-patch.js") -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot "skills\sync_codex_zh_map.py") -Destination (Join-Path $toolDir "sync_codex_zh_map.py") -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot "skills\sync_codex_native_menu_zh.py") -Destination $nativeMenuScriptPath -Force
 
 $python = (Get-Command python.exe -ErrorAction Stop).Source
 & $python (Join-Path $toolDir "sync_codex_zh_map.py") --codex-home $CodexHome --out $mapPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Display localization map generator failed with exit code $LASTEXITCODE"
+}
 
 Ensure-Dir $extractRoot
 npx --yes asar extract $targetAsar $extractRoot
@@ -144,10 +154,20 @@ if ($html -notmatch 'codex-zh-patch\.js') {
     Set-Content -LiteralPath $indexHtml -Value $html -Encoding UTF8
 }
 
+& $python $nativeMenuScriptPath --app-root $extractRoot --out $nativeMenuMapPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Native menu localization generator failed with exit code $LASTEXITCODE"
+}
+
 if (Test-Path -LiteralPath $targetAsar) {
     Remove-Item -LiteralPath $targetAsar -Force
 }
 npx --yes asar pack $extractRoot $targetAsar --unpack "**/*.node"
+
+$verify = npx --yes asar list $targetAsar | Select-String -Pattern 'webview\\codex-zh-patch\.js|webview\\codex-zh-map\.json|native-menu-locales\\zh-CN\.json|native-menu-locales\\codex-native-menu-zh\.json'
+if (@($verify).Count -lt 4) {
+    throw "Localized copy app.asar verification failed."
+}
 
 $launcher = Join-Path $TargetRoot "Start-Codex-zh.cmd"
 $exe = Join-Path $targetAppRoot "Codex.exe"
@@ -157,12 +177,17 @@ start "" "$exe"
 "@ | Set-Content -LiteralPath $launcher -Encoding ASCII
 
 $desktop = [Environment]::GetFolderPath("Desktop")
-$shortcutPath = Join-Path $desktop "Codex-ZH.lnk"
+$shortcutPath = Join-Path $desktop (Get-LocalizedShortcutName)
+$legacyShortcutPath = Join-Path $desktop "Codex-ZH.lnk"
+if (Test-Path -LiteralPath $legacyShortcutPath) {
+    Remove-Item -LiteralPath $legacyShortcutPath -Force
+}
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $exe
 $shortcut.WorkingDirectory = $targetAppRoot
 $shortcut.Description = "Codex Chinese localized copy"
+$shortcut.IconLocation = "$exe,0"
 $shortcut.Save()
 
 Remove-TreeRobust -Path $workRoot -AllowedRoot $env:TEMP
