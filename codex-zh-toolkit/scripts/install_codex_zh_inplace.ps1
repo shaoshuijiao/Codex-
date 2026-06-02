@@ -89,7 +89,10 @@ function Inject-CodexZh {
         [string]$SourceAsar,
         [string]$OutputAsar,
         [string]$MapPath,
-        [string]$PatchPath
+        [string]$PatchPath,
+        [string]$PythonPath,
+        [string]$NativeMenuScriptPath,
+        [string]$NativeMenuMapPath
     )
 
     $workRoot = Join-Path $env:TEMP ("codex-zh-inplace-" + [Guid]::NewGuid().ToString("N"))
@@ -121,6 +124,11 @@ function Inject-CodexZh {
             Set-Content -LiteralPath $indexHtml -Value $html -Encoding UTF8
         }
 
+        & $PythonPath $NativeMenuScriptPath --app-root $extractRoot --out $NativeMenuMapPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Native menu localization generator failed with exit code $LASTEXITCODE"
+        }
+
         if (Test-Path -LiteralPath $OutputAsar) {
             Remove-Item -LiteralPath $OutputAsar -Force
         }
@@ -146,6 +154,8 @@ $backupDir = Join-Path $BackupRoot $resolved.PackageFullName
 $toolDir = Join-Path $CodexHome "tools\codex-chinese"
 $mapPath = Join-Path $toolDir "codex-zh-map.json"
 $patchPath = Join-Path $toolDir "skill-display-patch.js"
+$nativeMenuScriptPath = Join-Path $toolDir "sync_codex_native_menu_zh.py"
+$nativeMenuMapPath = Join-Path $toolDir "codex-native-menu-zh.json"
 $stagedAsar = Join-Path $backupDir "app.asar.patched"
 $backupAsar = Join-Path $backupDir "app.asar.original"
 
@@ -153,18 +163,22 @@ Ensure-Dir $backupDir
 Ensure-Dir $toolDir
 Copy-Item -LiteralPath (Join-Path $projectRoot "desktop\skill-display-patch.js") -Destination $patchPath -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot "skills\sync_codex_zh_map.py") -Destination (Join-Path $toolDir "sync_codex_zh_map.py") -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot "skills\sync_codex_native_menu_zh.py") -Destination $nativeMenuScriptPath -Force
 
 $python = (Get-Command python.exe -ErrorAction Stop).Source
 & $python (Join-Path $toolDir "sync_codex_zh_map.py") --codex-home $CodexHome --out $mapPath
+if ($LASTEXITCODE -ne 0) {
+    throw "Display localization map generator failed with exit code $LASTEXITCODE"
+}
 
 if (-not (Test-Path -LiteralPath $backupAsar)) {
     Copy-Item -LiteralPath $asarPath -Destination $backupAsar -Force
 }
 
-Inject-CodexZh -SourceAsar $asarPath -OutputAsar $stagedAsar -MapPath $mapPath -PatchPath $patchPath
+Inject-CodexZh -SourceAsar $asarPath -OutputAsar $stagedAsar -MapPath $mapPath -PatchPath $patchPath -PythonPath $python -NativeMenuScriptPath $nativeMenuScriptPath -NativeMenuMapPath $nativeMenuMapPath
 
-$verify = npx --yes asar list $stagedAsar | Select-String -Pattern 'webview\\codex-zh-patch\.js|webview\\codex-zh-map\.json'
-if (@($verify).Count -lt 2) {
+$verify = npx --yes asar list $stagedAsar | Select-String -Pattern 'webview\\codex-zh-patch\.js|webview\\codex-zh-map\.json|native-menu-locales\\zh-CN\.json|native-menu-locales\\codex-native-menu-zh\.json'
+if (@($verify).Count -lt 4) {
     throw "Patched app.asar verification failed."
 }
 
@@ -205,8 +219,8 @@ try {
     Copy-Item -LiteralPath $stagedAsar -Destination $asarPath -Force
 }
 
-$installedVerify = npx --yes asar list $asarPath | Select-String -Pattern 'webview\\codex-zh-patch\.js|webview\\codex-zh-map\.json'
-if (@($installedVerify).Count -lt 2) {
+$installedVerify = npx --yes asar list $asarPath | Select-String -Pattern 'webview\\codex-zh-patch\.js|webview\\codex-zh-map\.json|native-menu-locales\\zh-CN\.json|native-menu-locales\\codex-native-menu-zh\.json'
+if (@($installedVerify).Count -lt 4) {
     throw "Installed app.asar verification failed."
 }
 
