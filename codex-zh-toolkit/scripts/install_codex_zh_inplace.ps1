@@ -73,15 +73,26 @@ function Get-RunningCodexProcesses {
 }
 
 function Grant-AdministratorsWrite {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [switch]$Directory
+    )
     takeown.exe /F $Path /A | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "takeown failed for $Path with exit code $LASTEXITCODE"
     }
-    icacls.exe $Path /grant "*S-1-5-32-544:F" | Out-Null
+    $grant = if ($Directory) { "*S-1-5-32-544:(OI)(CI)F" } else { "*S-1-5-32-544:F" }
+    icacls.exe $Path /grant $grant | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "icacls grant failed for $Path with exit code $LASTEXITCODE"
     }
+}
+
+function Grant-CodexAsarWrite {
+    param([string]$AsarPath)
+    $resourcesDir = Split-Path -Parent $AsarPath
+    Grant-AdministratorsWrite -Path $resourcesDir -Directory
+    Grant-AdministratorsWrite -Path $AsarPath
 }
 
 function Inject-CodexZh {
@@ -216,7 +227,8 @@ if (-not (Test-IsAdmin)) {
 try {
     Copy-Item -LiteralPath $stagedAsar -Destination $asarPath -Force
 } catch {
-    Grant-AdministratorsWrite -Path $asarPath
+    Write-Output "Initial app.asar copy failed. Granting write permission to Codex resources directory..."
+    Grant-CodexAsarWrite -AsarPath $asarPath
     Copy-Item -LiteralPath $stagedAsar -Destination $asarPath -Force
 }
 
